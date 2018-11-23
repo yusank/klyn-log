@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"git.yusank.space/yusank/klyn-log/consts"
+	"git.yusank.space/yusank/klyn-log/utils"
 )
 
 // Logger provide leveled log
@@ -79,6 +80,10 @@ func NewLogger(l *LoggerConfig) Logger {
 	logger := &KlynLog{
 		config: l,
 		cache:  cache,
+	}
+
+	if err := utils.CreateIfNotExist(consts.DefaultLogDir); err != nil {
+		panic(err)
 	}
 
 	go logger.monitor()
@@ -155,8 +160,7 @@ func (kl *KlynLog) getWriteAndWrite(b []byte) (err error) {
 // getIOWriter get log final writer and set for kl.logWriter
 func (kl *KlynLog) getIOWriter() (err error) {
 	day := time.Now().Format("2006-01-02")
-	os.Mkdir("logFiles", os.ModePerm)
-	fileName := fmt.Sprintf("logFiles/%s-%s.log", kl.config.Prefix, day)
+	fileName := fmt.Sprintf("%s/%s-%s.log", consts.DefaultLogDir, kl.config.Prefix, day)
 	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		return

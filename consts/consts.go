@@ -11,3 +11,8 @@ const (
 	// DefaultTickerDuration - ticker for cache write file
 	DefaultTickerDuration = 1 * time.Second
 )
+
+const (
+	// DefaultLogDir -
+	DefaultLogDir = "logFiles"
+)
