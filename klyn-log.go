@@ -249,7 +249,7 @@ func (kl *KlynLog) log(level int, j interface{}) {
 
 	line := fmt.Sprintf("[%s] | LEVEL:%d | message:%s\n", kl.config.Prefix, level, string(b))
 	if kl.config.IsDebug {
-		log.Println(line)
+		log.Printf(line)
 	}
 
 	kl.writeCache([]byte(line))
