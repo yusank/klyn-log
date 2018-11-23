@@ -134,7 +134,6 @@ func (kl *KlynLog) syncAndFlushCache() error {
 		return err
 	}
 
-	fmt.Println("write file and flush buffer", len(cache))
 	kl.cache.buf.Reset()
 	return nil
 }
