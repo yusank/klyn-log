@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -47,10 +48,9 @@ type KlynLog struct {
 
 // LoggerConfig - logger config
 type LoggerConfig struct {
-	isOff      bool
-	isDebug    bool
-	isUseCache bool
-	Prefix     string
+	isOff   bool
+	IsDebug bool
+	Prefix  string
 }
 
 type logCache struct {
@@ -89,8 +89,7 @@ func NewLogger(l *LoggerConfig) Logger {
 // DefaultLogger - get default logger
 func DefaultLogger() Logger {
 	conf := &LoggerConfig{
-		isUseCache: true,
-		Prefix:     "KLYN",
+		Prefix: "KLYN",
 	}
 
 	return NewLogger(conf)
@@ -245,8 +244,8 @@ func (kl *KlynLog) log(level int, j interface{}) {
 	b, _ := json.Marshal(j)
 
 	line := fmt.Sprintf("[%s] | LEVEL:%d | message:%s\n", kl.config.Prefix, level, string(b))
-	if kl.config.isDebug {
-		fmt.Println(line)
+	if kl.config.IsDebug {
+		log.Println(line)
 	}
 
 	kl.writeCache([]byte(line))
@@ -258,7 +257,6 @@ func (kl *KlynLog) log(level int, j interface{}) {
 func (kl *KlynLog) monitor() {
 	for {
 		if kl.cacheLen() >= consts.MaxSizeOfCache {
-			fmt.Println("full")
 			if err := kl.syncAndFlushCache(); err != nil {
 				panic(err)
 			}
@@ -266,7 +264,6 @@ func (kl *KlynLog) monitor() {
 
 		select {
 		case <-kl.cache.ticker.C:
-			fmt.Println("ticker")
 			if err := kl.syncAndFlushCache(); err != nil {
 				panic(err)
 			}
