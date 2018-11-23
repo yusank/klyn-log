@@ -155,7 +155,7 @@ func (kl *KlynLog) getWriteAndWrite(b []byte) (err error) {
 // getIOWriter get log final writer and set for kl.logWriter
 func (kl *KlynLog) getIOWriter() (err error) {
 	day := time.Now().Format("2006-01-02")
-	fileName := fmt.Sprintf("%s-%s.log", kl.config.Prefix, day)
+	fileName := fmt.Sprintf("logFiles/%s-%s.log", kl.config.Prefix, day)
 	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		return
