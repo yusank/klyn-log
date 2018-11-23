@@ -62,7 +62,6 @@ type logCache struct {
 
 type logWriter struct {
 	writer     *os.File
-	offset     int64
 	writerLock *sync.RWMutex
 }
 
@@ -159,12 +158,10 @@ func (kl *KlynLog) getWriteAndWrite(b []byte) (err error) {
 func (kl *KlynLog) getIOWriter() (err error) {
 	day := time.Now().Format("2006-01-02")
 	fileName := fmt.Sprintf("%s-%s.log", kl.config.Prefix, day)
-	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0666)
+	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		return
 	}
-
-	ret, _ := file.Seek(0, os.SEEK_END)
 
 	lw := &logWriter{
 		writerLock: new(sync.RWMutex),
@@ -175,7 +172,6 @@ func (kl *KlynLog) getIOWriter() (err error) {
 	}
 
 	kl.logWriter.writer = file
-	kl.logWriter.offset = ret
 
 	return nil
 }
@@ -189,7 +185,7 @@ func (kl *KlynLog) writeAndCloseWithLock(b []byte) (err error) {
 	}()
 
 	// append end of file
-	_, err = kl.logWriter.writer.WriteAt(b, kl.logWriter.offset)
+	_, err = kl.logWriter.writer.Write(b)
 	return
 }
 
