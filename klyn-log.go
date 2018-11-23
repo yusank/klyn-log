@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"sync"
+	"time"
+
+	"git.yusank.space/yusank/klyn-log/consts"
 )
 
 // Logger provide leveled log
@@ -39,52 +41,89 @@ const (
 // KlynLog - implement Logger and provide cache
 type KlynLog struct {
 	config    *LoggerConfig
-	logWriter io.Writer
-	cache     *logCache
+	logWriter *logWriter // log final destination
+	cache     *logCache  // log temp cache
 }
-
-type logCache struct {
-	buf       *bytes.Buffer
-	cacheLock *sync.RWMutex
-}
-
-const (
-	// MaxSizeOfCache - max size of cache
-	MaxSizeOfCache = 1 << 16 // 64k
-)
 
 // LoggerConfig - logger config
 type LoggerConfig struct {
 	isOff      bool
+	isDebug    bool
 	isUseCache bool
 	Prefix     string
-	lock       *sync.RWMutex
 }
+
+type logCache struct {
+	buf       *bytes.Buffer
+	ticker    *time.Ticker
+	errChan   chan error
+	cacheLock *sync.RWMutex
+}
+
+type logWriter struct {
+	writer     *os.File
+	offset     int64
+	writerLock *sync.RWMutex
+}
+
+// Closer close log writer if it necessary
+type Closer func() error
 
 // NewLogger return Logger
 func NewLogger(l *LoggerConfig) Logger {
-	l.lock = new(sync.RWMutex)
-	return &KlynLog{
-		config: l,
+	cache := &logCache{
+		buf:       new(bytes.Buffer),
+		cacheLock: new(sync.RWMutex),
+		ticker:    time.NewTicker(consts.DefaultTickerDuration),
+		errChan:   make(chan error, 0),
 	}
+	logger := &KlynLog{
+		config: l,
+		cache:  cache,
+	}
+
+	go logger.monitor()
+
+	return logger
 }
 
-func (kl *KlynLog) isOff() bool {
-	kl.config.lock.RLock()
-	defer kl.config.lock.RUnlock()
+// DefaultLogger - get default logger
+func DefaultLogger() Logger {
+	conf := &LoggerConfig{
+		isUseCache: true,
+		Prefix:     "KLYN",
+	}
 
+	return NewLogger(conf)
+}
+
+// isOff - is log off
+func (kl *KlynLog) isOff() bool {
 	return kl.config.isOff
 }
 
-func (kl *KlynLog) writeCache(b []byte) {
-	kl.cache.cacheLock.Lock()
-	kl.cache.buf.Write(b)
-	kl.cache.cacheLock.Unlock()
+// set log off
+func (kl *KlynLog) setLogOff() {
+	kl.config.isOff = true
 }
 
+// writeCache - write log to cache at first
+func (kl *KlynLog) writeCache(b []byte) {
+	kl.cache.cacheLock.Lock()
+	defer kl.cache.cacheLock.Unlock()
+
+	kl.cache.buf.Write(b)
+	return
+}
+
+// syncAndFlushCache - sync log from cache to io.writer and flush cache
 func (kl *KlynLog) syncAndFlushCache() error {
 	kl.cache.cacheLock.Lock()
 	defer kl.cache.cacheLock.Unlock()
+
+	if kl.cache.buf.Len() == 0 {
+		return nil
+	}
 
 	cache := make([]byte, kl.cache.buf.Len())
 	_, err := kl.cache.buf.Read(cache)
@@ -92,26 +131,74 @@ func (kl *KlynLog) syncAndFlushCache() error {
 		return err
 	}
 
-	_, err = kl.logWriter.Write(cache)
+	err = kl.getWriteAndWrite(cache)
 	if err != nil {
 		return err
 	}
 
+	fmt.Println("write file and flush buffer", len(cache))
 	kl.cache.buf.Reset()
 	return nil
 }
 
+// getWriteAndWrite get writer and write b into
+// lock when write and close writer after write
+func (kl *KlynLog) getWriteAndWrite(b []byte) (err error) {
+	if err = kl.getIOWriter(); err != nil {
+		return
+	}
+
+	if err = kl.writeAndCloseWithLock(b); err != nil {
+		fmt.Println(err)
+	}
+
+	return nil
+}
+
+// getIOWriter get log final writer and set for kl.logWriter
+func (kl *KlynLog) getIOWriter() (err error) {
+	day := time.Now().Format("2006-01-02")
+	fileName := fmt.Sprintf("%s-%s.log", kl.config.Prefix, day)
+	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return
+	}
+
+	ret, _ := file.Seek(0, os.SEEK_END)
+
+	lw := &logWriter{
+		writerLock: new(sync.RWMutex),
+	}
+
+	if kl.logWriter == nil {
+		kl.logWriter = lw
+	}
+
+	kl.logWriter.writer = file
+	kl.logWriter.offset = ret
+
+	return nil
+}
+
+// writeAndCloseWithLock - write b into kl.loggerWrier with mutex
+func (kl *KlynLog) writeAndCloseWithLock(b []byte) (err error) {
+	kl.logWriter.writerLock.Lock()
+	defer func() {
+		kl.logWriter.writer.Close()
+		kl.logWriter.writerLock.Unlock()
+	}()
+
+	// append end of file
+	_, err = kl.logWriter.writer.WriteAt(b, kl.logWriter.offset)
+	return
+}
+
+// cacheLen - get cache current length of used
 func (kl *KlynLog) cacheLen() int {
 	kl.cache.cacheLock.RLock()
 	defer kl.cache.cacheLock.RUnlock()
 
 	return kl.cache.buf.Len()
-}
-
-func (kl *KlynLog) setLogOff() {
-	kl.config.lock.Lock()
-	kl.config.isOff = true
-	kl.config.lock.RLock()
 }
 
 // Trace - trace level log
@@ -162,26 +249,34 @@ func (kl *KlynLog) log(level int, j interface{}) {
 	b, _ := json.Marshal(j)
 
 	line := fmt.Sprintf("[%s] | LEVEL:%d | message:%s\n", kl.config.Prefix, level, string(b))
-	file, err := kl.getLogFile()
-	if err != nil {
-		panic(err)
+	if kl.config.isDebug {
+		fmt.Println(line)
 	}
 
-	file.Write([]byte(line))
+	kl.writeCache([]byte(line))
 
 	return
 }
 
-func (kl *KlynLog) getLogFile() (file *os.File, err error) {
-	return os.Create(fmt.Sprintf("%s.log", kl.config.Prefix))
-}
-
+// monitor
 func (kl *KlynLog) monitor() {
 	for {
-		if kl.cacheLen() >= MaxSizeOfCache {
+		if kl.cacheLen() >= consts.MaxSizeOfCache {
+			fmt.Println("full")
 			if err := kl.syncAndFlushCache(); err != nil {
 				panic(err)
 			}
+		}
+
+		select {
+		case <-kl.cache.ticker.C:
+			fmt.Println("ticker")
+			if err := kl.syncAndFlushCache(); err != nil {
+				panic(err)
+			}
+		case e := <-kl.cache.errChan:
+			fmt.Println("err:", e)
+			return
 		}
 	}
 }
