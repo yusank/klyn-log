@@ -57,6 +57,7 @@ type LoggerConfig struct {
 type logCache struct {
 	buf       *bytes.Buffer
 	ticker    *time.Ticker
+	forceSync chan bool
 	errChan   chan error
 	cacheLock *sync.RWMutex
 }
@@ -75,6 +76,7 @@ func NewLogger(l *LoggerConfig) Logger {
 		buf:       new(bytes.Buffer),
 		cacheLock: new(sync.RWMutex),
 		ticker:    time.NewTicker(consts.DefaultTickerDuration),
+		forceSync: make(chan bool, 1),
 		errChan:   make(chan error, 0),
 	}
 	logger := &KlynLog{
@@ -259,21 +261,30 @@ func (kl *KlynLog) log(level int, j interface{}) {
 
 // monitor
 func (kl *KlynLog) monitor() {
+	go kl.sizeMonitor()
 	for {
-		if kl.cacheLen() >= consts.MaxSizeOfCache {
+		select {
+		case <-kl.cache.ticker.C:
 			if err := kl.syncAndFlushCache(); err != nil {
 				panic(err)
 			}
-		}
-
-		select {
-		case <-kl.cache.ticker.C:
+		case <-kl.cache.forceSync:
 			if err := kl.syncAndFlushCache(); err != nil {
 				panic(err)
 			}
 		case e := <-kl.cache.errChan:
 			fmt.Println("err:", e)
 			return
+		}
+	}
+}
+
+func (kl *KlynLog) sizeMonitor() {
+	for {
+		if kl.cacheLen() >= consts.MaxSizeOfCache {
+			kl.cache.forceSync <- true
+		} else {
+			time.Sleep(time.Millisecond * 10)
 		}
 	}
 }
