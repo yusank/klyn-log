@@ -120,6 +120,7 @@ func (kl *KlynLog) syncAndFlushCache() error {
 	kl.cache.cacheLock.Lock()
 	defer kl.cache.cacheLock.Unlock()
 
+	// already locked so no need to call `cacheLen()`
 	if kl.cache.buf.Len() == 0 {
 		return nil
 	}
@@ -162,12 +163,10 @@ func (kl *KlynLog) getIOWriter() (err error) {
 		return
 	}
 
-	lw := &logWriter{
-		writerLock: new(sync.RWMutex),
-	}
-
 	if kl.logWriter == nil {
-		kl.logWriter = lw
+		kl.logWriter = &logWriter{
+			writerLock: new(sync.RWMutex),
+		}
 	}
 
 	kl.logWriter.writer = file
@@ -189,11 +188,12 @@ func (kl *KlynLog) writeAndCloseWithLock(b []byte) (err error) {
 }
 
 // cacheLen - get cache current length of used
-func (kl *KlynLog) cacheLen() int {
+func (kl *KlynLog) cacheLen() (n int) {
 	kl.cache.cacheLock.RLock()
 	defer kl.cache.cacheLock.RUnlock()
 
-	return kl.cache.buf.Len()
+	n = kl.cache.buf.Len()
+	return
 }
 
 // Trace - trace level log
@@ -206,27 +206,28 @@ func (kl *KlynLog) Debug(j interface{}) {
 	kl.log(LoggerLevelDebug, j)
 }
 
-// Info -
+// Info - info level log
 func (kl *KlynLog) Info(j interface{}) {
 	kl.log(LoggerLevelInfo, j)
 }
 
-// Warn -
+// Warn - warn level info
 func (kl *KlynLog) Warn(j interface{}) {
 	kl.log(LoggerLevelWarn, j)
 }
 
-// Error -
+// Error - error level info
 func (kl *KlynLog) Error(j interface{}) {
 	kl.log(LoggerLevelError, j)
 }
 
-// Fatal -
+// Fatal - fatal level info
 func (kl *KlynLog) Fatal(j interface{}) {
 	kl.log(LoggerLevelFatal, j)
 }
 
-// Any -
+// Any - custom level log
+// level should be valid
 func (kl *KlynLog) Any(level int, j interface{}) {
 	kl.log(level, j)
 }
