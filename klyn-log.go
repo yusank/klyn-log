@@ -17,6 +17,15 @@ import (
 	"git.yusank.space/yusank/klyn-log/utils"
 )
 
+const (
+	// FlushModeEveryLog -  flush cache to disk each log
+	FlushModeEveryLog = iota
+	// FlushModeByDuration - flush cache to disk with every duration
+	FlushModeByDuration
+	// FlushModeBySize - flush cache to disk only when cache larger then size setted
+	FlushModeBySize
+)
+
 // KlynLog - implement Logger and provide cache
 type KlynLog struct {
 	config    *LoggerConfig
@@ -26,9 +35,11 @@ type KlynLog struct {
 
 // LoggerConfig - logger config
 type LoggerConfig struct {
-	isOff   bool
-	IsDebug bool
-	Prefix  string
+	isOff bool
+
+	FlushMode int // flush dick mode
+	IsDebug   bool
+	Prefix    string
 }
 
 type logCache struct {
@@ -73,7 +84,8 @@ func NewLogger(l *LoggerConfig) Logger {
 // DefaultLogger - get default logger
 func DefaultLogger() Logger {
 	conf := &LoggerConfig{
-		Prefix: "KLYN",
+		Prefix:    "KLYN",
+		FlushMode: FlushModeByDuration,
 	}
 
 	return NewLogger(conf)
@@ -82,6 +94,11 @@ func DefaultLogger() Logger {
 // isOff - is log off
 func (kl *KlynLog) isOff() bool {
 	return kl.config.isOff
+}
+
+// isFlushEveryLog -  is flush mode is FlushModeEveryLog
+func (kl *KlynLog) isFlushEveryLog() bool {
+	return kl.config.FlushMode == FlushModeEveryLog
 }
 
 // set log off
@@ -233,18 +250,28 @@ func (kl *KlynLog) log(level int, j interface{}) {
 
 	kl.writeCache([]byte(line))
 
+	if kl.isFlushEveryLog() {
+		kl.syncAndFlushCache()
+	}
+
 	return
 }
 
-// monitor
+// monitor - monitoring forceSync chan, flush cache once channel receive value
 func (kl *KlynLog) monitor() {
-	go kl.sizeMonitor()
+	// only monitor forceSync chan when need monitoring
+	switch kl.config.FlushMode {
+	case FlushModeBySize:
+		go kl.sizeMonitor()
+	case FlushModeByDuration:
+		go kl.durationMonitor()
+	// other mode no need to monitoring forceSync chan
+	default:
+		return
+	}
+
 	for {
 		select {
-		case <-kl.cache.ticker.C:
-			if err := kl.syncAndFlushCache(); err != nil {
-				panic(err)
-			}
 		case <-kl.cache.forceSync:
 			if err := kl.syncAndFlushCache(); err != nil {
 				panic(err)
@@ -256,12 +283,24 @@ func (kl *KlynLog) monitor() {
 	}
 }
 
+// sizeMonitor - check cache size every 10 millisecond.
+// Send a value to forceSync channel when cache size large then MaxSizeOfCache
 func (kl *KlynLog) sizeMonitor() {
 	for {
 		if kl.cacheLen() >= consts.MaxSizeOfCache {
 			kl.cache.forceSync <- true
 		} else {
 			time.Sleep(time.Millisecond * 10)
+		}
+	}
+}
+
+// durationMonitor - send value to forceSync when every tick
+func (kl *KlynLog) durationMonitor() {
+	for {
+		select {
+		case <-kl.cache.ticker.C:
+			kl.cache.forceSync <- true
 		}
 	}
 }

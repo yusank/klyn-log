@@ -13,7 +13,7 @@ const (
 
 const (
 	// DefaultTickerDuration - ticker for cache write file
-	DefaultTickerDuration = 1 * time.Second
+	DefaultTickerDuration = 200 * time.Millisecond
 )
 
 const (
