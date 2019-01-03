@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"git.yusank.space/yusank/klyn-log/consts"
@@ -77,6 +79,21 @@ func NewLogger(l *LoggerConfig) Logger {
 	}
 
 	go logger.monitor()
+
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Kill, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM,
+		syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
+
+	go func() {
+		for {
+			select {
+			case s := <-c:
+				fmt.Println("signal:", s.String())
+				logger.syncAndFlushCache()
+				os.Exit(0)
+			}
+		}
+	}()
 
 	return logger
 }
