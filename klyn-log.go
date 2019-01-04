@@ -81,16 +81,27 @@ func NewLogger(l *LoggerConfig) Logger {
 	go logger.monitor()
 
 	c := make(chan os.Signal)
-	signal.Notify(c, os.Kill, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM,
-		syscall.SIGQUIT, syscall.SIGUSR1, syscall.SIGUSR2)
+	// 监听信号量
+	// SIGHUP: 终端结束进程(终端连接断开)
+	// SIGTERM: 结束程序
+	// SIGINT: Ctrl+ c 操作
+	// SIGQUIT: Ctrl+ / 操作
+	// SIGUSR1, SIGUSR2 用户保留
+	signal.Notify(c, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT,
+		syscall.SIGUSR1, syscall.SIGUSR2)
 
 	go func() {
 		for {
-			select {
-			case s := <-c:
-				fmt.Println("signal:", s.String())
-				logger.syncAndFlushCache()
+			// 如捕捉到监听的信号，将内存中的日志写入文件
+			s := <-c
+			log.Println("catch signal:", s.String())
+			logger.syncAndFlushCache()
+			switch s {
+			// 如果为退出信号 则安全退出
+			case syscall.SIGHUP, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT:
 				os.Exit(0)
+			// 可以通过给进程发送 syscall.SIGUSR1, syscall.SIGUSR2 信号来，强制将缓存中的日志写入文件
+			default:
 			}
 		}
 	}()
