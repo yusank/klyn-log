@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -47,13 +48,14 @@ type LoggerConfig struct {
 type logCache struct {
 	buf       *bytes.Buffer
 	ticker    *time.Ticker
-	forceSync chan bool
+	syncChan  chan bool
 	errChan   chan error
 	cacheLock *sync.RWMutex
 }
 
 type logWriter struct {
-	writer     *os.File
+	lastWrite  int64 // last write time stamp
+	writer     io.WriteCloser
 	writerLock *sync.RWMutex
 }
 
@@ -66,7 +68,7 @@ func NewLogger(l *LoggerConfig) Logger {
 		buf:       new(bytes.Buffer),
 		cacheLock: new(sync.RWMutex),
 		ticker:    time.NewTicker(consts.DefaultTickerDuration),
-		forceSync: make(chan bool, 1),
+		syncChan:  make(chan bool, 0),
 		errChan:   make(chan error, 0),
 	}
 	logger := &KlynLog{
@@ -134,48 +136,91 @@ func (kl *KlynLog) setLogOff() {
 	kl.config.isOff = true
 }
 
-// writeCache - write log to cache at first
-func (kl *KlynLog) writeCache(b []byte) {
-	kl.cache.cacheLock.Lock()
-	defer kl.cache.cacheLock.Unlock()
+func (kl *KlynLog) isWriterClosed() bool {
+	return kl.logWriter == nil || kl.logWriter.writer == nil
+}
 
-	kl.cache.buf.Write(b)
+func (kl *KlynLog) isWriterValid() bool {
+	return kl.logWriter != nil && kl.logWriter.writer != nil
+}
+
+// writeCache - write log to cache at first
+func (lc *logCache) write(b []byte) error {
+	lc.cacheLock.Lock()
+	defer lc.cacheLock.Unlock()
+
+	_, err := lc.buf.Write(b)
+	return err
+}
+
+func (lc *logCache) length() int {
+	lc.cacheLock.RLock()
+	defer lc.cacheLock.RUnlock()
+
+	l := lc.buf.Len()
+	return l
+}
+
+// read and reset cache
+func (lc *logCache) popCache() (p []byte, err error) {
+	lc.cacheLock.Lock()
+	defer lc.cacheLock.Unlock()
+
+	p = make([]byte, lc.buf.Len())
+	_, err = lc.buf.Read(p)
+	if err != nil {
+		return
+	}
+
+	lc.buf.Reset()
 	return
+}
+
+func (lw *logWriter) write(b []byte) error {
+	lw.writerLock.Lock()
+	defer lw.writerLock.Unlock()
+
+	_, err := lw.writer.Write(b)
+	lw.lastWrite = time.Now().UnixNano()
+	return err
+}
+
+func (lw *logWriter) close() error {
+	lw.writerLock.Lock()
+	defer lw.writerLock.Unlock()
+
+	err := lw.writer.Close()
+	return err
 }
 
 // syncAndFlushCache - sync log from cache to io.writer and flush cache
 func (kl *KlynLog) syncAndFlushCache() error {
-	kl.cache.cacheLock.Lock()
-	defer kl.cache.cacheLock.Unlock()
-
 	// already locked so no need to call `cacheLen()`
-	if kl.cache.buf.Len() == 0 {
+	if kl.cache.length() == 0 {
 		return nil
 	}
 
-	cache := make([]byte, kl.cache.buf.Len())
-	_, err := kl.cache.buf.Read(cache)
+	cache, err := kl.cache.popCache()
 	if err != nil {
 		return err
 	}
 
-	err = kl.getWriteAndWrite(cache)
+	err = kl.writeToIO(cache)
 	if err != nil {
 		return err
 	}
 
-	kl.cache.buf.Reset()
 	return nil
 }
 
-// getWriteAndWrite get writer and write b into
+// writeToIO get writer and write b into
 // lock when write and close writer after write
-func (kl *KlynLog) getWriteAndWrite(b []byte) (err error) {
+func (kl *KlynLog) writeToIO(b []byte) (err error) {
 	if err = kl.getIOWriter(); err != nil {
 		return
 	}
 
-	if err = kl.writeAndCloseWithLock(b); err != nil {
+	if err = kl.logWriter.write(b); err != nil {
 		fmt.Println(err)
 	}
 
@@ -184,6 +229,11 @@ func (kl *KlynLog) getWriteAndWrite(b []byte) (err error) {
 
 // getIOWriter get log final writer and set for kl.logWriter
 func (kl *KlynLog) getIOWriter() (err error) {
+	// io writer still valid
+	if kl.isWriterValid() {
+		return
+	}
+
 	day := time.Now().Format("2006-01-02")
 	fileName := fmt.Sprintf("%s/%s-%s.log", consts.DefaultLogDir, kl.config.Prefix, day)
 	file, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -202,17 +252,28 @@ func (kl *KlynLog) getIOWriter() (err error) {
 	return nil
 }
 
-// writeAndCloseWithLock - write b into kl.loggerWrier with mutex
-func (kl *KlynLog) writeAndCloseWithLock(b []byte) (err error) {
-	kl.logWriter.writerLock.Lock()
-	defer func() {
-		kl.logWriter.writer.Close()
-		kl.logWriter.writerLock.Unlock()
-	}()
+// MaintainIOWriter - maintain kl io writer, in case opened and closed too frequently.
+// only run flush every log mode
+func (kl *KlynLog) MaintainIOWriter() {
+	var ts int64
+	for {
+		if kl.isWriterClosed() {
+			goto sleep
+		}
 
-	// append end of file
-	_, err = kl.logWriter.writer.Write(b)
-	return
+		kl.logWriter.writerLock.RLock()
+
+		ts = time.Now().UnixNano()
+		if kl.logWriter.lastWrite != 0 && ts-kl.logWriter.lastWrite > int64(1*time.Second) && kl.logWriter.writer != nil {
+			if err := kl.logWriter.close(); err != nil {
+				log.Fatal(err)
+			}
+		}
+		kl.logWriter.writerLock.RUnlock()
+
+	sleep:
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // cacheLen - get cache current length of used
@@ -274,34 +335,40 @@ func (kl *KlynLog) log(level int, j interface{}) {
 
 	line := fmt.Sprintf("[%s] | LEVEL:%d | message:%s\n", kl.config.Prefix, level, string(b))
 	if kl.config.IsDebug {
-		log.Printf(line)
+		//log.Printf(line)
 	}
 
-	kl.writeCache([]byte(line))
-
 	if kl.isFlushEveryLog() {
-		kl.syncAndFlushCache()
+		// if flush every log to io, then no need to write to cache
+		kl.writeToIO([]byte(line))
+		return
+	}
+
+	if err := kl.cache.write([]byte(line)); err != nil {
+		log.Fatal(err)
 	}
 
 	return
 }
 
-// monitor - monitoring forceSync chan, flush cache once channel receive value
+// monitor - monitoring syncChan chan, flush cache once channel receive value
 func (kl *KlynLog) monitor() {
-	// only monitor forceSync chan when need monitoring
+	// only monitor syncChan chan when need monitoring
 	switch kl.config.FlushMode {
 	case FlushModeBySize:
 		go kl.sizeMonitor()
 	case FlushModeByDuration:
 		go kl.durationMonitor()
-	// other mode no need to monitoring forceSync chan
+	case FlushModeEveryLog:
+		go kl.MaintainIOWriter()
+	// other mode no need to monitoring syncChan chan
 	default:
 		return
 	}
 
 	for {
 		select {
-		case <-kl.cache.forceSync:
+		case <-kl.cache.syncChan:
 			if err := kl.syncAndFlushCache(); err != nil {
 				panic(err)
 			}
@@ -313,23 +380,23 @@ func (kl *KlynLog) monitor() {
 }
 
 // sizeMonitor - check cache size every 10 millisecond.
-// Send a value to forceSync channel when cache size large then MaxSizeOfCache
+// Send a value to syncChan channel when cache size large then MaxSizeOfCache
 func (kl *KlynLog) sizeMonitor() {
 	for {
 		if kl.cacheLen() >= consts.MaxSizeOfCache {
-			kl.cache.forceSync <- true
+			kl.cache.syncChan <- true
 		} else {
 			time.Sleep(time.Millisecond * 10)
 		}
 	}
 }
 
-// durationMonitor - send value to forceSync when every tick
+// durationMonitor - send value to syncChan when every tick
 func (kl *KlynLog) durationMonitor() {
 	for {
 		select {
 		case <-kl.cache.ticker.C:
-			kl.cache.forceSync <- true
+			kl.cache.syncChan <- true
 		}
 	}
 }
