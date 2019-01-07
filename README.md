@@ -21,7 +21,13 @@ func main() {
 
     logger = klog.NewLogger(conf)
 
-    // other thing
+    logger.Warn(map[string]interface{}{
+				"name":   "hello world",
+				"userId": 1234,
+				"event": map[string]interface{}{
+					"gameId": "dddjs",
+				},
+			})
 }    
 ```
 
