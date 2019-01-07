@@ -6,7 +6,7 @@
 
 ``` go
 import(
-    klog "git.yusank.space/yusank/klyn-log"
+    klog "git.yusank.cn/yusank/klyn-log"
 )
 
 var logger klog.Logger
@@ -31,7 +31,7 @@ func main() {
 ### how to install
 
 ``` sh
-$ go get git.yusank.space/yusank/klyn-log
+$ go get git.yusank.cn/yusank/klyn-log
 ```
  
 ## testing
@@ -42,29 +42,20 @@ test with three mode, `...Mode1`:`FlushModeEveryLog`,`...Mode2`:`FlushModeByDura
 
  result: 
 ``` sh
-$ go test -bench=. -count=5 -run=^$
+$ go test -bench=. -run=^$
 goos: darwin
 goarch: amd64
-pkg: git.yusank.space/yusank/klyn-log
-BenchmarkNewLoggerMode1-8   	  100000	     10095 ns/op
-BenchmarkNewLoggerMode1-8   	  200000	     11567 ns/op
-BenchmarkNewLoggerMode1-8   	  100000	     10174 ns/op
-BenchmarkNewLoggerMode1-8   	  100000	     13317 ns/op
-BenchmarkNewLoggerMode1-8   	  200000	     13025 ns/op
-BenchmarkNewLoggerMode2-8   	 1000000	      1866 ns/op
-BenchmarkNewLoggerMode2-8   	 1000000	      1864 ns/op
-BenchmarkNewLoggerMode2-8   	 1000000	      1855 ns/op
-BenchmarkNewLoggerMode2-8   	 1000000	      1859 ns/op
-BenchmarkNewLoggerMode2-8   	 1000000	      1866 ns/op
-BenchmarkNewLoggerMode3-8   	 1000000	      1856 ns/op
-BenchmarkNewLoggerMode3-8   	 1000000	      1897 ns/op
-BenchmarkNewLoggerMode3-8   	 1000000	      1878 ns/op
-BenchmarkNewLoggerMode3-8   	 1000000	      1875 ns/op
-BenchmarkNewLoggerMode3-8   	 1000000	      1882 ns/op
+pkg: git.yusank.cn/yusank/klyn-log
+BenchmarkNewLoggerMode1-8         200000              8799 ns/op
+BenchmarkNewLoggerMode2-8        1000000              1912 ns/op
+BenchmarkNewLoggerMode3-8        1000000              1853 ns/op
 PASS
+ok      git.yusank.cn/yusank/klyn-log   5.681s
  ```
+> suggest use mode 2 or 3 for now .
+
 ## Authors
-- [yusank](http://git.yusank.space/yusank)
+- [yusank](http://git.yusank.cn/yusank)
 
 ## license
-[`MIT` license](http://git.yusank.space/yusank/klyn-log/src/master/LICENSE)
+[`MIT` license](http://git.yusank.cn/yusank/klyn-log/src/master/LICENSE)
