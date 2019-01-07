@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"git.yusank.space/yusank/klyn-log/consts"
-	"git.yusank.space/yusank/klyn-log/utils"
+	"git.yusank.cn/yusank/klyn-log/consts"
+	"git.yusank.cn/yusank/klyn-log/utils"
 )
 
 const (
