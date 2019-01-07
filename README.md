@@ -55,7 +55,7 @@ ok      git.yusank.cn/yusank/klyn-log   5.681s
 > suggest use mode 2 or 3 for now .
 
 ## Authors
-- [yusank](http://git.yusank.cn/yusank)
+- [yusank](https://git.yusank.cn/yusank)
 
 ## license
-[`MIT` license](http://git.yusank.cn/yusank/klyn-log/src/master/LICENSE)
+[`MIT` license](https://git.yusank.cn/yusank/klyn-log/src/master/LICENSE)
