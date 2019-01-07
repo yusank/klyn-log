@@ -20,15 +20,6 @@ import (
 	"git.yusank.cn/yusank/klyn-log/utils"
 )
 
-const (
-	// FlushModeEveryLog -  flush cache to disk each log
-	FlushModeEveryLog = iota
-	// FlushModeByDuration - flush cache to disk with every duration
-	FlushModeByDuration
-	// FlushModeBySize - flush cache to disk only when cache larger then size setted
-	FlushModeBySize
-)
-
 // KlynLog - implement Logger and provide cache
 type KlynLog struct {
 	config    *LoggerConfig
@@ -115,7 +106,7 @@ func NewLogger(l *LoggerConfig) Logger {
 func DefaultLogger() Logger {
 	conf := &LoggerConfig{
 		Prefix:    "KLYN",
-		FlushMode: FlushModeByDuration,
+		FlushMode: consts.FlushModeByDuration,
 	}
 
 	return NewLogger(conf)
@@ -128,7 +119,7 @@ func (kl *KlynLog) isOff() bool {
 
 // isFlushEveryLog -  is flush mode is FlushModeEveryLog
 func (kl *KlynLog) isFlushEveryLog() bool {
-	return kl.config.FlushMode == FlushModeEveryLog
+	return kl.config.FlushMode == consts.FlushModeEveryLog
 }
 
 // set log off
@@ -355,11 +346,11 @@ func (kl *KlynLog) log(level int, j interface{}) {
 func (kl *KlynLog) monitor() {
 	// only monitor syncChan chan when need monitoring
 	switch kl.config.FlushMode {
-	case FlushModeBySize:
+	case consts.FlushModeBySize:
 		go kl.sizeMonitor()
-	case FlushModeByDuration:
+	case consts.FlushModeByDuration:
 		go kl.durationMonitor()
-	case FlushModeEveryLog:
+	case consts.FlushModeEveryLog:
 		go kl.MaintainIOWriter()
 	// other mode no need to monitoring syncChan chan
 	default:

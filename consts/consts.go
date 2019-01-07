@@ -20,3 +20,12 @@ const (
 	// DefaultLogDir -
 	DefaultLogDir = "logFiles"
 )
+
+const (
+	// FlushModeEveryLog -  flush cache to disk each log
+	FlushModeEveryLog = iota
+	// FlushModeByDuration - flush cache to disk with every duration
+	FlushModeByDuration
+	// FlushModeBySize - flush cache to disk only when cache larger then size setted
+	FlushModeBySize
+)
