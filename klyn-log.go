@@ -6,7 +6,6 @@ package klynlog
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -18,7 +17,11 @@ import (
 
 	"git.yusank.cn/yusank/klyn-log/consts"
 	"git.yusank.cn/yusank/klyn-log/utils"
+
+	"github.com/json-iterator/go"
 )
+
+var json = jsoniter.ConfigCompatibleWithStandardLibrary
 
 // KlynLog - implement Logger and provide cache
 type KlynLog struct {
@@ -35,23 +38,6 @@ type LoggerConfig struct {
 	IsDebug   bool
 	Prefix    string
 }
-
-type logCache struct {
-	buf       *bytes.Buffer
-	ticker    *time.Ticker
-	syncChan  chan bool
-	errChan   chan error
-	cacheLock *sync.RWMutex
-}
-
-type logWriter struct {
-	lastWrite  int64 // last write time stamp
-	writer     io.WriteCloser
-	writerLock *sync.RWMutex
-}
-
-// Closer close log writer if it necessary
-type Closer func() error
 
 // NewLogger return Logger
 func NewLogger(l *LoggerConfig) Logger {
@@ -112,6 +98,72 @@ func DefaultLogger() Logger {
 	return NewLogger(conf)
 }
 
+// Trace - trace level log
+func (kl *KlynLog) Trace(j interface{}) {
+	kl.log(LoggerLevelTrace, j)
+}
+
+// Debug - debug level log
+func (kl *KlynLog) Debug(j interface{}) {
+	kl.log(LoggerLevelDebug, j)
+}
+
+// Info - info level log
+func (kl *KlynLog) Info(j interface{}) {
+	kl.log(LoggerLevelInfo, j)
+}
+
+// Warn - warn level info
+func (kl *KlynLog) Warn(j interface{}) {
+	kl.log(LoggerLevelWarn, j)
+}
+
+// Error - error level info
+func (kl *KlynLog) Error(j interface{}) {
+	kl.log(LoggerLevelError, j)
+}
+
+// Fatal - fatal level info
+func (kl *KlynLog) Fatal(j interface{}) {
+	kl.log(LoggerLevelFatal, j)
+}
+
+// Any - custom level log
+// level should be valid
+func (kl *KlynLog) Any(level Level, j interface{}) {
+	kl.log(level, j)
+}
+
+// OFF - off all level log
+func (kl *KlynLog) OFF() {
+	kl.setLogOff()
+}
+
+func (kl *KlynLog) log(l Level, j interface{}) {
+	if kl.isOff() || j == nil {
+		return
+	}
+
+	b, _ := json.Marshal(j)
+
+	line := fmt.Sprintf("[%s] | LEVEL:%s | message:%s\n", kl.config.Prefix, l.String(), string(b))
+	if kl.config.IsDebug {
+		//log.Printf(line)
+	}
+
+	if kl.isFlushEveryLog() {
+		// if flush every log to io, then no need to write to cache
+		kl.writeToIO([]byte(line))
+		return
+	}
+
+	if err := kl.cache.write([]byte(line)); err != nil {
+		log.Fatal(err)
+	}
+
+	return
+}
+
 // isOff - is log off
 func (kl *KlynLog) isOff() bool {
 	return kl.config.isOff
@@ -133,55 +185,6 @@ func (kl *KlynLog) isWriterClosed() bool {
 
 func (kl *KlynLog) isWriterValid() bool {
 	return kl.logWriter != nil && kl.logWriter.writer != nil
-}
-
-// writeCache - write log to cache at first
-func (lc *logCache) write(b []byte) error {
-	lc.cacheLock.Lock()
-	defer lc.cacheLock.Unlock()
-
-	_, err := lc.buf.Write(b)
-	return err
-}
-
-func (lc *logCache) length() int {
-	lc.cacheLock.RLock()
-	defer lc.cacheLock.RUnlock()
-
-	l := lc.buf.Len()
-	return l
-}
-
-// read and reset cache
-func (lc *logCache) popCache() (p []byte, err error) {
-	lc.cacheLock.Lock()
-	defer lc.cacheLock.Unlock()
-
-	p = make([]byte, lc.buf.Len())
-	_, err = lc.buf.Read(p)
-	if err != nil {
-		return
-	}
-
-	lc.buf.Reset()
-	return
-}
-
-func (lw *logWriter) write(b []byte) error {
-	lw.writerLock.Lock()
-	defer lw.writerLock.Unlock()
-
-	_, err := lw.writer.Write(b)
-	lw.lastWrite = time.Now().UnixNano()
-	return err
-}
-
-func (lw *logWriter) close() error {
-	lw.writerLock.Lock()
-	defer lw.writerLock.Unlock()
-
-	err := lw.writer.Close()
-	return err
 }
 
 // syncAndFlushCache - sync log from cache to io.writer and flush cache
@@ -276,72 +279,6 @@ func (kl *KlynLog) cacheLen() (n int) {
 	return
 }
 
-// Trace - trace level log
-func (kl *KlynLog) Trace(j interface{}) {
-	kl.log(LoggerLevelTrace, j)
-}
-
-// Debug - debug level log
-func (kl *KlynLog) Debug(j interface{}) {
-	kl.log(LoggerLevelDebug, j)
-}
-
-// Info - info level log
-func (kl *KlynLog) Info(j interface{}) {
-	kl.log(LoggerLevelInfo, j)
-}
-
-// Warn - warn level info
-func (kl *KlynLog) Warn(j interface{}) {
-	kl.log(LoggerLevelWarn, j)
-}
-
-// Error - error level info
-func (kl *KlynLog) Error(j interface{}) {
-	kl.log(LoggerLevelError, j)
-}
-
-// Fatal - fatal level info
-func (kl *KlynLog) Fatal(j interface{}) {
-	kl.log(LoggerLevelFatal, j)
-}
-
-// Any - custom level log
-// level should be valid
-func (kl *KlynLog) Any(level int, j interface{}) {
-	kl.log(level, j)
-}
-
-// OFF - off all level log
-func (kl *KlynLog) OFF() {
-	kl.setLogOff()
-}
-
-func (kl *KlynLog) log(level int, j interface{}) {
-	if kl.isOff() {
-		return
-	}
-
-	b, _ := json.Marshal(j)
-
-	line := fmt.Sprintf("[%s] | LEVEL:%d | message:%s\n", kl.config.Prefix, level, string(b))
-	if kl.config.IsDebug {
-		//log.Printf(line)
-	}
-
-	if kl.isFlushEveryLog() {
-		// if flush every log to io, then no need to write to cache
-		kl.writeToIO([]byte(line))
-		return
-	}
-
-	if err := kl.cache.write([]byte(line)); err != nil {
-		log.Fatal(err)
-	}
-
-	return
-}
-
 // monitor - monitoring syncChan chan, flush cache once channel receive value
 func (kl *KlynLog) monitor() {
 	// only monitor syncChan chan when need monitoring
@@ -390,4 +327,67 @@ func (kl *KlynLog) durationMonitor() {
 			kl.cache.syncChan <- true
 		}
 	}
+}
+
+type logCache struct {
+	buf       *bytes.Buffer
+	ticker    *time.Ticker
+	syncChan  chan bool
+	errChan   chan error
+	cacheLock *sync.RWMutex
+}
+
+// writeCache - write log to cache at first
+func (lc *logCache) write(b []byte) error {
+	lc.cacheLock.Lock()
+	defer lc.cacheLock.Unlock()
+
+	_, err := lc.buf.Write(b)
+	return err
+}
+
+func (lc *logCache) length() int {
+	lc.cacheLock.RLock()
+	defer lc.cacheLock.RUnlock()
+
+	l := lc.buf.Len()
+	return l
+}
+
+// read and reset cache
+func (lc *logCache) popCache() (p []byte, err error) {
+	lc.cacheLock.Lock()
+	defer lc.cacheLock.Unlock()
+
+	p = make([]byte, lc.buf.Len())
+	_, err = lc.buf.Read(p)
+	if err != nil {
+		return
+	}
+
+	lc.buf.Reset()
+	return
+}
+
+type logWriter struct {
+	lastWrite  int64 // last write time stamp
+	writer     io.WriteCloser
+	writerLock *sync.RWMutex
+}
+
+func (lw *logWriter) write(b []byte) error {
+	lw.writerLock.Lock()
+	defer lw.writerLock.Unlock()
+
+	_, err := lw.writer.Write(b)
+	lw.lastWrite = time.Now().UnixNano()
+	return err
+}
+
+func (lw *logWriter) close() error {
+	lw.writerLock.Lock()
+	defer lw.writerLock.Unlock()
+
+	err := lw.writer.Close()
+	return err
 }

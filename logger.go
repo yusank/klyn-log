@@ -4,6 +4,8 @@
 
 package klynlog
 
+import "fmt"
+
 // Logger provide leveled log
 type Logger interface {
 	Trace(j interface{})
@@ -12,13 +14,16 @@ type Logger interface {
 	Warn(j interface{})
 	Error(j interface{})
 	Fatal(j interface{})
-	Any(level int, j interface{})
+	Any(l Level, j interface{})
 	OFF()
 }
 
+// Level - log level
+type Level uint8
+
 const (
 	// LoggerLevelTrace - log trace level
-	LoggerLevelTrace = iota + 1
+	LoggerLevelTrace Level = iota + 1
 	// LoggerLevelDebug - log debug level
 	LoggerLevelDebug
 	// LoggerLevelInfo - log info level
@@ -30,3 +35,23 @@ const (
 	// LoggerLevelFatal - log fatal level
 	LoggerLevelFatal
 )
+
+// String - return level name
+func (l Level) String() string {
+	switch l {
+	case LoggerLevelTrace:
+		return "trace"
+	case LoggerLevelDebug:
+		return "debug"
+	case LoggerLevelInfo:
+		return "info"
+	case LoggerLevelWarn:
+		return "warn"
+	case LoggerLevelError:
+		return "error"
+	case LoggerLevelFatal:
+		return "fatal"
+	default:
+		return fmt.Sprint(uint8(l))
+	}
+}

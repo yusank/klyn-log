@@ -3,12 +3,14 @@ package klynlog
 import (
 	"testing"
 	"time"
+
+	"git.yusank.cn/yusank/klyn-log/consts"
 )
 
 func TestLog(t *testing.T) {
 	l := &LoggerConfig{
 		Prefix:    "KLYN",
-		FlushMode: FlushModeEveryLog,
+		FlushMode: consts.FlushModeEveryLog,
 	}
 	logger := NewLogger(l)
 	// logger := DefaultLogger()
@@ -37,7 +39,7 @@ func TestLog(t *testing.T) {
 
 func TestLogFLush(t *testing.T) {
 	conf := &LoggerConfig{
-		FlushMode: FlushModeEveryLog,
+		FlushMode: consts.FlushModeEveryLog,
 		IsDebug:   true,
 		Prefix:    "yusank",
 	}
@@ -56,14 +58,21 @@ func TestLogFLush(t *testing.T) {
 func BenchmarkNewLoggerMode1(b *testing.B) {
 	l := &LoggerConfig{
 		Prefix:    "KLYN",
-		FlushMode: FlushModeEveryLog,
+		FlushMode: consts.FlushModeEveryLog,
 	}
 
 	logger := NewLogger(l)
 	for i := 0; i < b.N; i++ {
 		logger.Error(map[string]interface{}{
-			"ip":     "127.0.0.1",
-			"userId": i,
+			"ip":      "127.0.0.1",
+			"userId":  i,
+			"name":    "hello world",
+			"userId2": i,
+			"key1":    "val1",
+			"key2":    "val1",
+			"key3":    "val1",
+			"key4":    "val1",
+			"key5":    "val1",
 		})
 	}
 }
@@ -71,22 +80,41 @@ func BenchmarkNewLoggerMode1(b *testing.B) {
 func BenchmarkNewLoggerMode2(b *testing.B) {
 	l := &LoggerConfig{
 		Prefix:    "KLYN",
-		FlushMode: FlushModeByDuration,
+		FlushMode: consts.FlushModeByDuration,
 	}
 
 	logger := NewLogger(l)
 	for i := 0; i < b.N; i++ {
 		logger.Error(map[string]interface{}{
-			"ip":     "127.0.0.1",
-			"userId": i,
+			"ip":      "127.0.0.1",
+			"userId":  i,
+			"name":    "hello world",
+			"userId2": i,
+			"key1":    "val1",
+			"key2":    "val1",
+			"key3":    "val1",
+			"key4":    "val1",
+			"key5":    "val1",
 		})
+	}
+}
+
+func BenchmarkNewLoggerMode2_empty(b *testing.B) {
+	l := &LoggerConfig{
+		Prefix:    "KLYN",
+		FlushMode: consts.FlushModeByDuration,
+	}
+
+	logger := NewLogger(l)
+	for i := 0; i < b.N; i++ {
+		logger.Error(nil)
 	}
 }
 
 func BenchmarkNewLoggerMode3(b *testing.B) {
 	l := &LoggerConfig{
 		Prefix:    "KLYN",
-		FlushMode: FlushModeBySize,
+		FlushMode: consts.FlushModeBySize,
 	}
 
 	logger := NewLogger(l)
@@ -94,6 +122,12 @@ func BenchmarkNewLoggerMode3(b *testing.B) {
 		logger.Error(map[string]interface{}{
 			"ip":     "127.0.0.1",
 			"userId": i,
+			"name":   "hello world",
+			"key1":   "val1",
+			"key2":   "val1",
+			"key3":   "val1",
+			"key4":   "val1",
+			"key5":   "val1",
 		})
 	}
 }
