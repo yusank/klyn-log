@@ -107,7 +107,8 @@ func BenchmarkNewLoggerMode2_empty(b *testing.B) {
 
 	logger := NewLogger(l)
 	for i := 0; i < b.N; i++ {
-		logger.Error(nil)
+		logger.Error(map[string]interface{}{
+			"ip": "127.0.0.1"})
 	}
 }
 
