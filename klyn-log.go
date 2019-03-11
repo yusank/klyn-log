@@ -21,8 +21,6 @@ import (
 	"github.com/json-iterator/go"
 )
 
-var json = jsoniter.ConfigCompatibleWithStandardLibrary
-
 // KlynLog - implement Logger and provide cache
 type KlynLog struct {
 	config    *LoggerConfig
@@ -74,13 +72,14 @@ func NewLogger(l *LoggerConfig) Logger {
 			// 如捕捉到监听的信号，将内存中的日志写入文件
 			s := <-c
 			log.Println("catch signal:", s.String())
-			logger.syncAndFlushCache()
+			_ = logger.syncAndFlushCache()
 			switch s {
 			// 如果为退出信号 则安全退出
 			case syscall.SIGHUP, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT:
 				os.Exit(0)
 			// 可以通过给进程发送 syscall.SIGUSR1, syscall.SIGUSR2 信号来，强制将缓存中的日志写入文件
 			default:
+				log.Fatal(s.String())
 			}
 		}
 	}()
@@ -144,7 +143,7 @@ func (kl *KlynLog) log(l Level, j interface{}) {
 		return
 	}
 
-	b, _ := json.Marshal(j)
+	b, _ := jsoniter.Marshal(j)
 
 	line := fmt.Sprintf("[%s] | LEVEL:%s | message:%s\n", kl.config.Prefix, l.String(), string(b))
 	if kl.config.IsDebug {
@@ -153,7 +152,7 @@ func (kl *KlynLog) log(l Level, j interface{}) {
 
 	if kl.isFlushEveryLog() {
 		// if flush every log to io, then no need to write to cache
-		kl.writeToIO([]byte(line))
+		_ = kl.writeToIO([]byte(line))
 		return
 	}
 
