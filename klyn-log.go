@@ -21,6 +21,13 @@ import (
 	"github.com/json-iterator/go"
 )
 
+var (
+	JSON = jsoniter.Config{
+		EscapeHTML:  true,
+		SortMapKeys: true,
+	}.Froze()
+)
+
 // KlynLog - implement Logger and provide cache
 type KlynLog struct {
 	config    *LoggerConfig
@@ -92,6 +99,7 @@ func DefaultLogger() Logger {
 	conf := &LoggerConfig{
 		Prefix:    "KLYN",
 		FlushMode: consts.FlushModeByDuration,
+		IsDebug:   true,
 	}
 
 	return NewLogger(conf)
@@ -143,11 +151,11 @@ func (kl *KlynLog) log(l Level, j interface{}) {
 		return
 	}
 
-	b, _ := jsoniter.Marshal(j)
+	b, _ := JSON.Marshal(j)
 
 	line := fmt.Sprintf("[%s] | LEVEL:%s | message:%s\n", kl.config.Prefix, l.String(), string(b))
 	if kl.config.IsDebug {
-		//log.Printf(line)
+		log.Printf(line)
 	}
 
 	if kl.isFlushEveryLog() {

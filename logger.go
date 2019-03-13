@@ -18,6 +18,8 @@ type Logger interface {
 	OFF()
 }
 
+type LogFunc func(j interface{})
+
 // Level - log level
 type Level uint8
 

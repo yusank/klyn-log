@@ -27,12 +27,12 @@ func TestLog(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < 1000; i++ {
-		logger.Error(map[string]interface{}{
-			"ip":     "127.0.0.1",
-			"userId": i,
-		})
-	}
+	//for i := 0; i < 1000; i++ {
+	//	logger.Error(map[string]interface{}{
+	//		"ip":     "127.0.0.1",
+	//		"userId": i,
+	//	})
+	//}
 
 	time.Sleep(2 * time.Second)
 }
