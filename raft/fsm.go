@@ -3,6 +3,7 @@ package raft
 import (
 	"encoding/json"
 	"io"
+	"log"
 
 	"github.com/hashicorp/raft"
 )
@@ -11,6 +12,7 @@ import (
 
 type FSM struct {
 	ctx *raftContext
+	log *log.Logger
 }
 
 type logEntryData struct {
@@ -23,8 +25,9 @@ func (f *FSM) Apply(logEntry *raft.Log) interface{} {
 	if err := json.Unmarshal(logEntry.Data, &e); err != nil {
 		panic("Failed unmarshaling Raft log entry. This is a bug.")
 	}
-	f.ctx.rs.cm.Set(e.Key, e.Value)
 
+	f.ctx.rs.cm.Set(e.Key, e.Value)
+	f.log.Printf("fms.Apply(), logEntry:%s\n", logEntry.Data)
 	return nil
 }
 

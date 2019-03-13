@@ -11,9 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/hashicorp/raft-boltdb"
-
 	"github.com/hashicorp/raft"
+	"github.com/hashicorp/raft-boltdb"
 )
 
 type raftNode struct {
@@ -34,7 +33,7 @@ func newRaftTransport(cfg *config) (*raft.NetworkTransport, error) {
 func newRaftNode(cfg *config, ctx *raftContext) (*raftNode, error) {
 	raftConfig := raft.DefaultConfig()
 	raftConfig.LocalID = raft.ServerID(cfg.raftTCPAddr)
-	raftConfig.Logger = log.New(os.Stderr, "raft", log.LstdFlags)
+	raftConfig.Logger = log.New(os.Stderr, "[raft]", log.LstdFlags)
 	raftConfig.SnapshotInterval = 20 * time.Second
 	raftConfig.SnapshotThreshold = 2
 	leaderNotifyCh := make(chan bool, 1)
@@ -49,7 +48,10 @@ func newRaftNode(cfg *config, ctx *raftContext) (*raftNode, error) {
 		return nil, err
 	}
 
-	fsm := &FSM{ctx: ctx}
+	fsm := &FSM{
+		ctx: ctx,
+		log: log.New(os.Stderr, "[FSM]", log.LstdFlags),
+	}
 
 	snapshotStore, err := raft.NewFileSnapshotStore(cfg.dataDir, 1, os.Stderr)
 	if err != nil {
@@ -101,7 +103,7 @@ func joinRaftCluster(cfg *config) error {
 		return err
 	}
 
-	if string(body) != "ok" {
+	if resp.StatusCode != http.StatusOK {
 		return errors.New(fmt.Sprintf("Error joining cluster: %s", body))
 	}
 

@@ -1,8 +1,12 @@
 package raft
 
 import (
+	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 	"sync/atomic"
+	"time"
 
 	"github.com/hashicorp/raft"
 )
@@ -15,15 +19,17 @@ const (
 type httpServer struct {
 	ctx         *raftContext
 	mux         *http.ServeMux
+	logger      *log.Logger
 	enableWrite uint32
 }
 
-func newHttpServer(ctx *raftContext) *httpServer {
+func newHttpServer(ctx *raftContext, l *log.Logger) *httpServer {
 	mux := http.NewServeMux()
 	hs := &httpServer{
 		ctx:         ctx,
 		mux:         mux,
 		enableWrite: UnableWriteNode,
+		logger:      l,
 	}
 
 	mux.HandleFunc("/get", hs.getHandler)
@@ -46,11 +52,13 @@ func (h *httpServer) setWriteFlag(enable bool) {
 }
 
 func (h *httpServer) getHandler(w http.ResponseWriter, r *http.Request) {
-	key := r.Form.Get("key")
+	h.logger.Printf("%s | %d", r.RequestURI, http.StatusOK)
+	key := r.URL.Query().Get("key")
 	val, ok := h.ctx.rs.cm.Get(key)
 
 	if !ok {
 		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("not found"))
 		return
 	}
 
@@ -64,6 +72,7 @@ func (h *httpServer) getHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *httpServer) setHandler(w http.ResponseWriter, r *http.Request) {
+	h.logger.Printf("%s | %d", r.RequestURI, http.StatusOK)
 	if !h.enableWriteNode() {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -76,17 +85,29 @@ func (h *httpServer) setHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.ctx.rs.cm.Set(key, val)
-	_, err := w.Write([]byte("ok"))
+	event := logEntryData{Key: key, Value: val}
+	eventBytes, err := json.Marshal(event)
 	if err != nil {
+		h.logger.Printf("json.Marshal failed, err:%v", err)
 		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "internal error\n")
 		return
 	}
 
+	applyFuture := h.ctx.rs.node.raft.Apply(eventBytes, 5*time.Second)
+	if err := applyFuture.Error(); err != nil {
+		h.logger.Printf("raft.Apply failed:%v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "internal error\n")
+		return
+	}
+
+	w.Write([]byte("ok"))
 	return
 }
 
 func (h *httpServer) joinHandler(w http.ResponseWriter, r *http.Request) {
+	h.logger.Printf("%s | %d", r.RequestURI, http.StatusOK)
 	peerAddr := r.URL.Query().Get("peerAddr")
 	if peerAddr == "" {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -94,11 +115,13 @@ func (h *httpServer) joinHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.ctx.rs.node.raft.AddVoter(raft.ServerID(peerAddr), raft.ServerAddress(peerAddr), 0, 0); err != nil {
+	if indexFeature := h.ctx.rs.node.raft.AddVoter(raft.ServerID(peerAddr), raft.ServerAddress(peerAddr), 0, 0); indexFeature.Error() != nil {
+		h.logger.Println(indexFeature.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("add voter err"))
 		return
 	}
 
 	w.Write([]byte("ok"))
+
 }
