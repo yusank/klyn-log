@@ -3,7 +3,7 @@ package main
 import (
 	"sync"
 
-	"git.yusank.cn/yusank/klyn-log/raft"
+	"git.yusank.cn/yusank/klyn-log/lib/raft"
 )
 
 type cacheManager struct {
