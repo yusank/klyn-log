@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -22,7 +23,7 @@ import (
 )
 
 var (
-	JSON = jsoniter.Config{
+	json = jsoniter.Config{
 		EscapeHTML:  true,
 		SortMapKeys: true,
 	}.Froze()
@@ -37,7 +38,7 @@ type KlynLog struct {
 
 // LoggerConfig - logger config
 type LoggerConfig struct {
-	isOff bool
+	offFlag uint32
 
 	FlushMode int // flush dick mode
 	IsDebug   bool
@@ -151,7 +152,7 @@ func (kl *KlynLog) log(l Level, j interface{}) {
 		return
 	}
 
-	b, _ := JSON.Marshal(j)
+	b, _ := json.Marshal(j)
 
 	line := fmt.Sprintf("[%s] | LEVEL:%s | message:%s\n", kl.config.Prefix, l.String(), string(b))
 	if kl.config.IsDebug {
@@ -173,7 +174,7 @@ func (kl *KlynLog) log(l Level, j interface{}) {
 
 // isOff - is log off
 func (kl *KlynLog) isOff() bool {
-	return kl.config.isOff
+	return kl.config.offFlag == 1
 }
 
 // isFlushEveryLog -  is flush mode is FlushModeEveryLog
@@ -181,9 +182,8 @@ func (kl *KlynLog) isFlushEveryLog() bool {
 	return kl.config.FlushMode == consts.FlushModeEveryLog
 }
 
-// set log off
-func (kl *KlynLog) setLogOff() {
-	kl.config.isOff = true
+func (kl *KlynLog) setOffAtomic() {
+	atomic.StoreUint32(&kl.config.offFlag, 1)
 }
 
 func (kl *KlynLog) isWriterClosed() bool {
