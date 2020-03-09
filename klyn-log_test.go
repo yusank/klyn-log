@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"git.yusank.cn/yusank/klyn-log/consts"
+	"github.com/yusank/klyn-log/consts"
 )
 
 func TestLog(t *testing.T) {

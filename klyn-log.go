@@ -16,10 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"git.yusank.cn/yusank/klyn-log/consts"
-	"git.yusank.cn/yusank/klyn-log/utils"
+	"github.com/yusank/klyn-log/consts"
+	"github.com/yusank/klyn-log/utils"
 
-	"github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 )
 
 var (
