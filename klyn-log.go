@@ -144,7 +144,7 @@ func (kl *KlynLog) Any(level Level, j interface{}) {
 
 // OFF - off all level log
 func (kl *KlynLog) OFF() {
-	kl.setLogOff()
+	kl.setOffAtomic()
 }
 
 func (kl *KlynLog) log(l Level, j interface{}) {
